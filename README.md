@@ -54,7 +54,7 @@ For Ubuntu, Debian, and similar (following the instructions at https://www.swi-p
 
 Start the server:
 
-    swipl simple_server.pl --port=9999 --staticdir=static
+    swipl simple_server.pl --port=8080 --staticdir=static
 
 In a browser, start the client: [http://localhost:9999](http://localhost:9999).
 

@@ -1,30 +1,3 @@
-#!/usr/bin/env swipl
-% -*- mode: Prolog -*-
-
-% Start this with:
-%   swipl simple_server.pl --port 9999 --staticdir static
-
-% TODO: if using daemon:
-%         swipl simple_server.pl --port=.... --pidfile=/var/run/simple_server.pid
-%       and kill $(cat /var/run/simple_server.pid)
-
-% TODO: Support HTTPS: https://www.swi-prolog.org/pldoc/man?section=ssl-https-server
-
-% See README.md for an overview of how the code works.
-
-% Access this from a browser with
-%   http://localhost:9999
-%     which does a redirect to:
-%   http://localhost:9999/static/simple_client.html
-
-% See also:
-%    http://www.pathwayslms.com/swipltuts/html/index.html
-%    https://swi-prolog.discourse.group/t/yet-another-web-applications-tutorial/566
-%    https://www.swi-prolog.org/howto/http/
-
-% TODO: add a simple example of generating source with headers.
-%       and use reply_html_page/3
-%       See also: https://swi-prolog.discourse.group/t/additional-http-headers-with-reply-html-page-2-3/3624/3
 
 :- module(simple_server, [simple_server_main/0, simple_server_impl/0]).
 
@@ -35,6 +8,8 @@
 
 :- use_module(library(debug)).
 :- use_module(library(optparse), [opt_arguments/3]).
+:- use_module(library(regex)).
+:- use_module(library(pcre)).
 
 % The most useful debug flags are here. A complete set of debug
 % flags can be found by
@@ -136,6 +111,7 @@ server_opts(Opts) :-
 % then be accessed (using absolute_file_name/3) by
 % static(FileName). This is asserted dynamically because the value is
 % taken from the command line.
+
 assert_server_locations(Opts) :-
     debug(log, 'static dir: ~q', [Opts.staticdir]),
     asserta(user:file_search_path(static_dir, Opts.staticdir)).
@@ -144,19 +120,21 @@ assert_server_locations(Opts) :-
 %      - for debugging, 'moved' can be cleared by chrome://settings/clearBrowserData
 %        (Cached images and files)
 % You might want to also specify root('index.html').
+/*
 :- http_handler(root(.),
                 http_handler_redirect(
                     moved, % or 'moved_temporary', for easier debugging
                     static('simple_client.html')),
                 []).
-
+*/
 % Serve localhost:9999/static/ from 'static' directory (See also facts for http:location/3)
 % For debugging, you might want cache(false).
 % See also https://swi-prolog.discourse.group/t/how-to-debug-if-modified-since-with-http-reply-from-files/1892/3
+/*
 :- http_handler(static(.),
                 http_reply_from_files(static_dir(.), [cache(true)]),
                 [prefix]).
-
+*/
 :- http_handler(root(json),     % localhost:9999/json
                 reply_with_json, [priority(0)]).
 
@@ -165,6 +143,7 @@ assert_server_locations(Opts) :-
 %    How is moved_temporary or moved
 %    To is a file path
 %    Request is the incoming HTTP request
+
 http_handler_redirect(How, To, Request) :-
     memberchk(path(Base), Request),
     memberchk(request_uri(RequestURI), Request),
@@ -204,7 +183,7 @@ reply_with_json(Request) :-
 % that can be serialized with json_write_dict/2.
 % For more details, see https://www.swi-prolog.org/pldoc/man?section=jsonsupport
 %
-% If you want to debug json_response/2 (to see what's sent to the client),
+% If you want to debug json_response/2 (to see whats sent to the client),
 % you can use json_write_dict/2, which is in library(http/json:
 % ?- json_response(json{query: "... GoalString ..."}, Result),
 %    json_write(user_output, Result).
@@ -224,18 +203,22 @@ json_response(json{query: GoalString},
 %           -VarsResult:list, -PrintedOutput:string, -ErrorString:string) :-
 % Parse the GoalString and call it, capturing the results, including success/error,
 % variable bindings, output.
-do_query(GoalString, TrueFalseError, GoalStringAfterCall, VarsResult, PrintedOutput, ErrorString) :-
+%複数解を追加できるように変更
+
+do_query(GoalString, TrueFalseError, GoalStringAfterCall, VarsResults, PrintedOutput, ErrorString) :-
     (   read_term_from_atom(GoalString, Goal, [syntax_errors(error), variable_names(Vars)]),
-        with_output_to(string(PrintedOutput), Goal)
-    ->  maplist(format_var, Vars, VarsResult),
+        with_output_to(string(PrintedOutput), findall(Vars, Goal, AllVars))
+    ->  maplist(maplist(format_var), AllVars, VarsResults),
         TrueFalseError = true,
         format(string(GoalStringAfterCall), '~q', [Goal])
-    ;   VarsResult = [],
+    ;   VarsResults = [],
         TrueFalseError = false,
         PrintedOutput = "",
         GoalStringAfterCall = GoalString
     ),
-    ErrorString = ''.
+   ErrorString = ''.
+
+
 
 %! format_var(+VarEqualsValue, -JsonDict) is det.
 % Format a Var=Value into a JSON structure.
